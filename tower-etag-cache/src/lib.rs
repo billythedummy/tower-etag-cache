@@ -13,6 +13,9 @@ pub mod simple_cache_key;
 #[cfg(feature = "base64-blake3-body-etag")]
 pub mod base64_blake3_body_etag;
 
+#[cfg(feature = "const-lru-provider")]
+pub mod const_lru_provider;
+
 pub use cache_provider::*;
 pub use err::*;
 pub use future::*;
@@ -51,11 +54,9 @@ where
     /// TODO: additional user-specified conditionals to control request passthrough
     fn call(&mut self, req: http::Request<ReqBody>) -> Self::Future {
         match *req.method() {
-            Method::GET | Method::HEAD => EtagCacheServiceFuture::cache_get_before(
-                self.cache_provider.clone(),
-                self.inner.clone(),
-                req,
-            ),
+            Method::GET | Method::HEAD => {
+                EtagCacheServiceFuture::start(self.cache_provider.clone(), self.inner.clone(), req)
+            }
             _ => EtagCacheServiceFuture::passthrough(
                 self.cache_provider.clone(),
                 self.inner.clone(),

@@ -33,7 +33,7 @@ impl<
         S: Service<http::Request<ReqBody>, Response = http::Response<ResBody>>,
     > EtagCacheServiceFuture<ReqBody, ResBody, C, S>
 {
-    pub fn cache_get_before(cache_provider: C, inner: S, req: http::Request<ReqBody>) -> Self {
+    pub fn start(cache_provider: C, inner: S, req: http::Request<ReqBody>) -> Self {
         Self {
             cache_provider,
             inner,

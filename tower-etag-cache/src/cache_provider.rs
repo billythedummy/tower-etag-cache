@@ -1,6 +1,7 @@
 use http::HeaderMap;
 use tower_service::Service;
 
+#[derive(Debug, Clone)]
 pub struct CacheGetResponse<Req, Key> {
     pub req: Req,
     pub result: CacheGetResponseResult<Key>,
@@ -10,6 +11,7 @@ pub struct CacheGetResponse<Req, Key> {
 /// - calculated cache key if entry not in cache, so that the request
 ///   key can be processed by the inner service and the key can be used to put later on
 /// - HTTP response headers to send along with the HTTP 304 response
+#[derive(Debug, Clone)]
 pub enum CacheGetResponseResult<Key> {
     Miss(Key),
     Hit(HeaderMap),
