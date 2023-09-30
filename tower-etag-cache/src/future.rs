@@ -9,7 +9,7 @@ use std::{
 use tower_service::Service;
 
 use crate::{
-    cache::{CacheProvider, CachePutProvider},
+    cache_provider::{CacheProvider, CachePutProvider},
     CacheGetResponse, CacheGetResponseResult, EtagCacheRespBody, EtagCacheServiceError,
 };
 
@@ -128,8 +128,11 @@ impl<
                         Err(e) => return Poll::Ready(Err(EtagCacheServiceError::CacheGetError(e))),
                     };
                     let key = match result {
-                        CacheGetResponseResult::Hit(time) => {
-                            return Poll::Ready(Ok(EtagCacheRespBody::hit_resp(req, time)));
+                        CacheGetResponseResult::Hit(headers) => {
+                            return Poll::Ready(
+                                EtagCacheRespBody::hit_resp(headers)
+                                    .map_err(EtagCacheServiceError::ResponseError),
+                            );
                         }
                         CacheGetResponseResult::Miss(k) => k,
                     };
@@ -198,13 +201,11 @@ impl<
             }
             EtagCacheServiceFutureStateProj::CachePut { fut } => match fut.poll(cx) {
                 Poll::Pending => Poll::Pending,
-                Poll::Ready(result) => {
-                    let resp = match result {
-                        Ok(r) => r,
-                        Err(e) => return Poll::Ready(Err(EtagCacheServiceError::CachePutError(e))),
-                    };
-                    Poll::Ready(Ok(EtagCacheRespBody::miss_resp(resp)))
-                }
+                Poll::Ready(result) => Poll::Ready(
+                    result
+                        .map(EtagCacheRespBody::miss_resp)
+                        .map_err(EtagCacheServiceError::CachePutError),
+                ),
             },
         }
     }

@@ -1,25 +1,22 @@
+use http::HeaderMap;
 use tower_service::Service;
 
-pub struct CacheGetResponse<Req, Key, Time> {
+pub struct CacheGetResponse<Req, Key> {
     pub req: Req,
-    pub result: CacheGetResponseResult<Key, Time>,
+    pub result: CacheGetResponseResult<Key>,
 }
 
 /// Either
 /// - calculated cache key if entry not in cache, so that the request
 ///   key can be processed by the inner service and the key can be used to put later on
-/// - The time at which the entry was cached if in cache. This also serves as the HTTP Last-Modified value
-pub enum CacheGetResponseResult<Key, Time> {
+/// - HTTP response headers to send along with the HTTP 304 response
+pub enum CacheGetResponseResult<Key> {
     Miss(Key),
-    // TODO: refactor to return HeaderMap
-    Hit(Time),
+    Hit(HeaderMap),
 }
 
-pub trait CacheGetProvider<Req>:
-    Service<Req, Response = CacheGetResponse<Req, Self::Key, Self::Time>>
-{
+pub trait CacheGetProvider<Req>: Service<Req, Response = CacheGetResponse<Req, Self::Key>> {
     type Key;
-    type Time;
 }
 
 /// The service passes (key, response from inner service) to the provider.
@@ -32,8 +29,7 @@ pub trait CachePutProvider<Resp>: Service<(Self::Key, Resp), Response = Resp> {
 }
 
 pub trait CacheProvider<Req, Resp>:
-    CacheGetProvider<Req, Key = Self::K, Time = Self::T> + CachePutProvider<Resp, Key = Self::K>
+    CacheGetProvider<Req, Key = Self::K> + CachePutProvider<Resp, Key = Self::K>
 {
     type K;
-    type T;
 }

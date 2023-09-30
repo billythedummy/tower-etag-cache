@@ -1,7 +1,7 @@
 use std::task::Poll;
 use tower_service::Service;
 
-mod cache;
+mod cache_provider;
 mod err;
 mod future;
 mod response;
@@ -12,7 +12,7 @@ pub mod simple_cache_key;
 #[cfg(feature = "base64-blake3-body-etag")]
 pub mod base64_blake3_body_etag;
 
-pub use cache::*;
+pub use cache_provider::*;
 pub use err::*;
 pub use future::*;
 pub use response::*;
