@@ -1,4 +1,4 @@
-#![allow(clippy::type_complexity)]
+#![allow(clippy::type_complexity)] // for EtagCacheServiceFutureState::CachePut.fut
 
 use pin_project::pin_project;
 use std::{
@@ -40,6 +40,17 @@ impl<
             state: EtagCacheServiceFutureState::CacheGetBefore { req: Some(req) },
         }
     }
+
+    pub fn passthrough(cache_provider: C, inner: S, req: http::Request<ReqBody>) -> Self {
+        Self {
+            cache_provider,
+            inner,
+            state: EtagCacheServiceFutureState::InnerBefore {
+                key: None,
+                req: Some(req),
+            },
+        }
+    }
 }
 
 // using options just to take() and move fields to next state easily
@@ -58,10 +69,12 @@ pub enum EtagCacheServiceFutureState<
         fut: <C as Service<http::Request<ReqBody>>>::Future,
     },
     InnerBefore {
+        /// None indicates passthrough: only inner service is called
         key: Option<C::K>,
         req: Option<http::Request<ReqBody>>,
     },
     Inner {
+        /// None indicates passthrough: only inner service is called
         key: Option<C::K>,
         #[pin]
         fut: S::Future,
@@ -166,9 +179,12 @@ impl<
                         Ok(r) => r,
                         Err(e) => return Poll::Ready(Err(EtagCacheServiceError::InnerError(e))),
                     };
-                    let k = key.take();
+                    let k = match key.take() {
+                        Some(k) => k,
+                        None => return Poll::Ready(Ok(EtagCacheRespBody::miss_resp(resp))),
+                    };
                     curr_state.set(EtagCacheServiceFutureState::CachePutBefore {
-                        key: k,
+                        key: Some(k),
                         resp: Some(resp),
                     });
                     cx.waker().wake_by_ref();

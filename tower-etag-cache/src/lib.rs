@@ -1,3 +1,4 @@
+use http::Method;
 use std::task::Poll;
 use tower_service::Service;
 
@@ -47,13 +48,19 @@ where
         Poll::Ready(Ok(()))
     }
 
-    /// TODO: conditional to allow requests to not interact with cache layer at all
-    /// and go straight to inner
+    /// TODO: additional user-specified conditionals to control request passthrough
     fn call(&mut self, req: http::Request<ReqBody>) -> Self::Future {
-        EtagCacheServiceFuture::cache_get_before(
-            self.cache_provider.clone(),
-            self.inner.clone(),
-            req,
-        )
+        match *req.method() {
+            Method::GET | Method::HEAD => EtagCacheServiceFuture::cache_get_before(
+                self.cache_provider.clone(),
+                self.inner.clone(),
+                req,
+            ),
+            _ => EtagCacheServiceFuture::passthrough(
+                self.cache_provider.clone(),
+                self.inner.clone(),
+                req,
+            ),
+        }
     }
 }
