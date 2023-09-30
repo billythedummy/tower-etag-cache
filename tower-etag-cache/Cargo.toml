@@ -1,0 +1,18 @@
+[package]
+name = "tower-etag-cache"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+default = []
+simple-cache-key = []
+base64-blake3-body-etag = ["dep:base64", "dep:blake3"]
+
+[dependencies]
+base64 = { version = "^0.21", optional = true }
+blake3 = { version = "^1.0", optional = true }
+http = "^0.2"
+http-body = "^0.4"
+pin-project = "^1.0"
+time = "^0.3"
+tower-service = "^0.3"
