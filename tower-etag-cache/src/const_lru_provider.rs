@@ -1,12 +1,14 @@
+use bytes::Bytes;
 use const_lru::ConstLru;
 use http::{HeaderMap, HeaderValue};
 use http_body::Body;
-use hyper::body::Bytes;
 use num_traits::{PrimInt, Unsigned};
 use pin_project::pin_project;
 use std::{
     alloc::alloc,
     alloc::Layout,
+    convert::Infallible,
+    fmt::Display,
     future::Future,
     pin::Pin,
     ptr::addr_of_mut,
@@ -23,8 +25,13 @@ use tower_service::Service;
 
 use crate::{
     base64_blake3_body_etag::base64_blake3_body_etag, simple_cache_key::simple_etag_cache_key,
-    CacheGetProvider, CacheGetResponse, CacheGetResponseResult, CacheProvider, CachePutProvider,
+    CacheGetResponse, CacheGetResponseResult, CacheProvider,
 };
+
+pub type ReqTup<ReqBody, ResBody> = (
+    ConstLruProviderReq<ReqBody, ResBody>,
+    oneshot::Sender<ConstLruProviderRes<ReqBody>>,
+);
 
 #[derive(Debug)]
 pub enum ConstLruProviderReq<ReqBody, ResBody> {
@@ -33,22 +40,52 @@ pub enum ConstLruProviderReq<ReqBody, ResBody> {
 }
 
 #[derive(Debug)]
-pub enum ConstLruProviderRes<ReqBody, ResBody> {
-    Get(CacheGetResponse<http::Request<ReqBody>, String>),
-    Put(http::Response<ResBody>),
+#[pin_project]
+pub struct ConstLruProviderTResBody(Bytes);
+
+impl From<Bytes> for ConstLruProviderTResBody {
+    fn from(value: Bytes) -> Self {
+        Self(value)
+    }
 }
 
+impl Body for ConstLruProviderTResBody {
+    type Data = Bytes;
+
+    type Error = Infallible;
+
+    fn poll_data(
+        self: Pin<&mut Self>,
+        _cx: &mut Context<'_>,
+    ) -> Poll<Option<Result<Self::Data, Self::Error>>> {
+        Poll::Ready(Some(Ok(std::mem::take(self.project().0))))
+    }
+
+    fn poll_trailers(
+        self: Pin<&mut Self>,
+        _cx: &mut Context<'_>,
+    ) -> Poll<Result<Option<HeaderMap>, Self::Error>> {
+        Poll::Ready(Ok(None))
+    }
+}
+
+#[derive(Debug)]
+pub enum ConstLruProviderRes<ReqBody> {
+    Get(CacheGetResponse<ReqBody, String>),
+    Put(http::Response<ConstLruProviderTResBody>),
+}
+
+/// 
+/// ReqBody = axum::body::Body
+/// ResBody = axum::body::BoxBody
 pub struct ConstLruProvider<ReqBody, ResBody, const CAP: usize, I: PrimInt + Unsigned = usize> {
     const_lru: ConstLru<String, (String, SystemTime), CAP, I>,
-    req_rx: mpsc::Receiver<(
-        ConstLruProviderReq<ReqBody, ResBody>,
-        oneshot::Sender<ConstLruProviderRes<ReqBody, ResBody>>,
-    )>,
+    req_rx: mpsc::Receiver<ReqTup<ReqBody, ResBody>>,
 }
 
 impl<
         ReqBody: Send + 'static,
-        ResBody: Send + Body + From<Bytes> + 'static,
+        ResBody: Send + Body + 'static,
         const CAP: usize,
         I: PrimInt + Unsigned + Send + 'static,
     > ConstLruProvider<ReqBody, ResBody, CAP, I>
@@ -69,17 +106,13 @@ where
         }
     }
 
-    fn boxed(
-        req_rx: mpsc::Receiver<(
-            ConstLruProviderReq<ReqBody, ResBody>,
-            oneshot::Sender<ConstLruProviderRes<ReqBody, ResBody>>,
-        )>,
-    ) -> Box<Self> {
+    fn boxed(req_rx: mpsc::Receiver<ReqTup<ReqBody, ResBody>>) -> Box<Self> {
         unsafe {
             let ptr = alloc(Layout::new::<Self>()) as *mut Self;
             let const_lru_ptr = addr_of_mut!((*ptr).const_lru);
             ConstLru::init_at_alloc(const_lru_ptr);
-            (*ptr).req_rx = req_rx;
+            let req_rx_ptr = addr_of_mut!((*ptr).req_rx);
+            req_rx_ptr.write(req_rx);
             Box::from_raw(ptr)
         }
     }
@@ -98,10 +131,7 @@ where
         // exits when all req_tx dropped
     }
 
-    fn on_get_request(
-        &mut self,
-        req: http::Request<ReqBody>,
-    ) -> CacheGetResponse<http::Request<ReqBody>, String> {
+    fn on_get_request(&mut self, req: http::Request<ReqBody>) -> CacheGetResponse<ReqBody, String> {
         let key = simple_etag_cache_key(&req).unwrap(); // TODO: handle error
         let (cache_etag, last_modified) = match self.const_lru.get(&key) {
             Some(e) => e,
@@ -144,8 +174,9 @@ where
         &mut self,
         key: String,
         resp: http::Response<ResBody>,
-    ) -> http::Response<ResBody> {
+    ) -> http::Response<ConstLruProviderTResBody> {
         let (mut parts, body) = resp.into_parts();
+        // TODO: use aggregate() instead
         let body_bytes = match hyper::body::to_bytes(body).await {
             Ok(b) => b,
             Err(_) => unreachable!(), // TODO: handle error
@@ -161,24 +192,28 @@ where
 
 // SERVICE HANDLE
 
-#[derive(Clone)]
 pub struct ConstLruProviderHandle<ReqBody, ResBody> {
-    req_tx: PollSender<(
-        ConstLruProviderReq<ReqBody, ResBody>,
-        oneshot::Sender<ConstLruProviderRes<ReqBody, ResBody>>,
-    )>,
+    req_tx: PollSender<ReqTup<ReqBody, ResBody>>,
+}
+
+impl<ReqBody, ResBody> Clone for ConstLruProviderHandle<ReqBody, ResBody> {
+    fn clone(&self) -> Self {
+        Self {
+            req_tx: self.req_tx.clone(),
+        }
+    }
 }
 
 // GET
 
 #[pin_project]
-pub struct ConstLruProviderGetFuture<ReqBody, ResBody> {
+pub struct ConstLruProviderGetFuture<ReqBody> {
     #[pin]
-    resp_rx: oneshot::Receiver<ConstLruProviderRes<ReqBody, ResBody>>,
+    resp_rx: oneshot::Receiver<ConstLruProviderRes<ReqBody>>,
 }
 
-impl<ReqBody, ResBody> Future for ConstLruProviderGetFuture<ReqBody, ResBody> {
-    type Output = Result<CacheGetResponse<http::Request<ReqBody>, String>, ConstLruProviderError>;
+impl<ReqBody> Future for ConstLruProviderGetFuture<ReqBody> {
+    type Output = Result<CacheGetResponse<ReqBody, String>, ConstLruProviderError>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         self.project()
@@ -198,14 +233,14 @@ impl<ReqBody, ResBody> Service<http::Request<ReqBody>> for ConstLruProviderHandl
 where
     (
         ConstLruProviderReq<ReqBody, ResBody>,
-        oneshot::Sender<ConstLruProviderRes<ReqBody, ResBody>>,
+        oneshot::Sender<ConstLruProviderRes<ReqBody>>,
     ): Send,
 {
-    type Response = CacheGetResponse<http::Request<ReqBody>, String>;
+    type Response = CacheGetResponse<ReqBody, String>;
 
     type Error = ConstLruProviderError;
 
-    type Future = ConstLruProviderGetFuture<ReqBody, ResBody>;
+    type Future = ConstLruProviderGetFuture<ReqBody>;
 
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         self.req_tx
@@ -227,13 +262,13 @@ where
 // PUT
 
 #[pin_project]
-pub struct ConstLruProviderPutFuture<ReqBody, ResBody> {
+pub struct ConstLruProviderPutFuture<ReqBody> {
     #[pin]
-    resp_rx: oneshot::Receiver<ConstLruProviderRes<ReqBody, ResBody>>,
+    resp_rx: oneshot::Receiver<ConstLruProviderRes<ReqBody>>,
 }
 
-impl<ReqBody, ResBody> Future for ConstLruProviderPutFuture<ReqBody, ResBody> {
-    type Output = Result<http::Response<ResBody>, ConstLruProviderError>;
+impl<ReqBody> Future for ConstLruProviderPutFuture<ReqBody> {
+    type Output = Result<http::Response<ConstLruProviderTResBody>, ConstLruProviderError>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         self.project()
@@ -254,14 +289,14 @@ impl<ReqBody, ResBody> Service<(String, http::Response<ResBody>)>
 where
     (
         ConstLruProviderReq<ReqBody, ResBody>,
-        oneshot::Sender<ConstLruProviderRes<ReqBody, ResBody>>,
+        oneshot::Sender<ConstLruProviderRes<ReqBody>>,
     ): Send,
 {
-    type Response = http::Response<ResBody>;
+    type Response = http::Response<ConstLruProviderTResBody>;
 
     type Error = ConstLruProviderError;
 
-    type Future = ConstLruProviderPutFuture<ReqBody, ResBody>;
+    type Future = ConstLruProviderPutFuture<ReqBody>;
 
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         self.req_tx
@@ -282,27 +317,29 @@ where
 
 // IMPLS
 
-impl<ReqBody: Send, ResBody: Send> CacheGetProvider<http::Request<ReqBody>>
+impl<ReqBody: Send, ResBody: Send> CacheProvider<ReqBody, ResBody>
     for ConstLruProviderHandle<ReqBody, ResBody>
 {
     type Key = String;
-}
-
-impl<ReqBody: Send, ResBody: Send> CachePutProvider<http::Response<ResBody>>
-    for ConstLruProviderHandle<ReqBody, ResBody>
-{
-    type Key = String;
-}
-
-impl<ReqBody: Send, ResBody: Send> CacheProvider<http::Request<ReqBody>, http::Response<ResBody>>
-    for ConstLruProviderHandle<ReqBody, ResBody>
-{
-    type K = String;
+    type TResBody = ConstLruProviderTResBody;
 }
 
 // ERROR
 
+// Error type must implement std::Error else axum will throw
+// `the trait bound HandleError<...> is not satisfied`
+
+#[derive(Debug, Clone)]
 pub enum ConstLruProviderError {
     OneshotRecv(RecvError),
     MpscSend,
+}
+
+impl Display for ConstLruProviderError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::OneshotRecv(e) => e.fmt(f),
+            Self::MpscSend => write!(f, "MpscSend"),
+        }
+    }
 }

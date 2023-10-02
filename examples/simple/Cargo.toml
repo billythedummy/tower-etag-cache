@@ -1,0 +1,28 @@
+[package]
+name = "my-web-app"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "my_web_app"
+
+[[bin]]
+name = "my-web-app"
+
+[features]
+default = ["dev"]
+dev = ["minijinja/debug"]
+
+[dependencies]
+ammonia = "^3"
+axum = "^0.6"
+lazy_static = "^1"
+minijinja = { version = "^1.0", default-features = false, features = ["loader", "multi_template"] }
+minijinja-autoreload = "^1.0"
+serde = { version = "^1", features = ["derive"] }
+tokio = { version = "^1", features = ["macros", "rt-multi-thread"] }
+tower-etag-cache = { path = "../../tower-etag-cache", features = ["const-lru-provider"]}
+tower = "^0.4"
+tower-http = { version = "^0.4", features = ["compression-gzip", "fs", "timeout", "trace"] }
+tracing = "^0.1"
+tracing-subscriber = "^0.3"

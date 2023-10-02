@@ -1,4 +1,5 @@
 [workspace]
 members = [
   "tower-etag-cache",
+  "examples/*"
 ]

@@ -1,5 +1,6 @@
 use http::Method;
 use std::task::Poll;
+use tower_layer::Layer;
 use tower_service::Service;
 
 mod cache_provider;
@@ -27,20 +28,45 @@ pub struct EtagCache<C, S> {
     inner: S,
 }
 
+impl<C, S> EtagCache<C, S> {
+    pub fn new(cache_provider: C, inner: S) -> Self {
+        Self {
+            cache_provider,
+            inner,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct EtagCacheLayer<C> {
+    cache_provider: C,
+}
+
+impl<C> EtagCacheLayer<C> {
+    pub fn new(cache_provider: C) -> Self {
+        Self { cache_provider }
+    }
+}
+
+impl<C: Clone, S> Layer<S> for EtagCacheLayer<C> {
+    type Service = EtagCache<C, S>;
+
+    fn layer(&self, inner: S) -> Self::Service {
+        EtagCache::new(self.cache_provider.clone(), inner)
+    }
+}
+
 impl<ReqBody, ResBody, C, S> Service<http::Request<ReqBody>> for EtagCache<C, S>
 where
-    C: CacheProvider<http::Request<ReqBody>, http::Response<ResBody>> + Clone,
+    C: CacheProvider<ReqBody, ResBody> + Clone,
     S: Service<http::Request<ReqBody>, Response = http::Response<ResBody>> + Clone,
 {
-    type Response = http::Response<EtagCacheRespBody<ResBody>>;
+    type Response = http::Response<EtagCacheResBody<ResBody, C::TResBody>>;
 
     type Error = EtagCacheServiceError<
         <C as Service<http::Request<ReqBody>>>::Error,
         S::Error,
-        <C as Service<(
-            <C as CachePutProvider<http::Response<ResBody>>>::Key,
-            http::Response<ResBody>,
-        )>>::Error,
+        <C as Service<(C::Key, http::Response<ResBody>)>>::Error,
     >;
 
     type Future = EtagCacheServiceFuture<ReqBody, ResBody, C, S>;

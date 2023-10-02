@@ -1,0 +1,35 @@
+{
+  "name": "my-web-app",
+  "version": "0.0.0",
+  "scripts": {
+    "dev": "vite dev",
+    "build": "vite build",
+    "preview": "vite preview",
+    "pretty": "prettier --write \"**/*.html\" \"**/*.css\" \"**/*.js\" \"**/*.json\"",
+    "lint": "eslint --fix \"**/*.js\""
+  },
+  "devDependencies": {
+    "autoprefixer": "^10.4.13",
+    "eslint": "^8.34.0",
+    "eslint-config-airbnb-base": "^15.0.0",
+    "eslint-config-prettier": "^8.6.0",
+    "eslint-import-resolver-jsconfig": "^1.1.0",
+    "eslint-plugin-import": "^2.27.5",
+    "eslint-plugin-simple-import-sort": "^10.0.0",
+    "glob": "^9.3.2",
+    "postcss": "^8.4.21",
+    "postcss-import": "^15.1.0",
+    "prettier": "^3.0.2",
+    "prettier-plugin-jinja-template": "^1.0.0",
+    "prettier-plugin-tailwindcss": "^0.5.3",
+    "tailwindcss": "^3.3.3",
+    "typescript": "^5",
+    "vite": "^4.1.4",
+    "vite-plugin-pwa": "^0.14.4",
+    "vite-plugin-static-copy": "^0.17",
+    "workbox-window": "^6.5.4"
+  },
+  "dependencies": {
+    "htmx.org": "^1.9.4"
+  }
+}

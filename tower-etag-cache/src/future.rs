@@ -9,15 +9,15 @@ use std::{
 use tower_service::Service;
 
 use crate::{
-    cache_provider::{CacheProvider, CachePutProvider},
-    CacheGetResponse, CacheGetResponseResult, EtagCacheRespBody, EtagCacheServiceError,
+    cache_provider::CacheProvider, CacheGetResponse, CacheGetResponseResult, EtagCacheResBody,
+    EtagCacheServiceError,
 };
 
 #[pin_project]
 pub struct EtagCacheServiceFuture<
     ReqBody,
     ResBody,
-    C: CacheProvider<http::Request<ReqBody>, http::Response<ResBody>>,
+    C: CacheProvider<ReqBody, ResBody>,
     S: Service<http::Request<ReqBody>, Response = http::Response<ResBody>>,
 > {
     cache_provider: C,
@@ -29,7 +29,7 @@ pub struct EtagCacheServiceFuture<
 impl<
         ReqBody,
         ResBody,
-        C: CacheProvider<http::Request<ReqBody>, http::Response<ResBody>>,
+        C: CacheProvider<ReqBody, ResBody>,
         S: Service<http::Request<ReqBody>, Response = http::Response<ResBody>>,
     > EtagCacheServiceFuture<ReqBody, ResBody, C, S>
 {
@@ -58,7 +58,7 @@ impl<
 pub enum EtagCacheServiceFutureState<
     ReqBody,
     ResBody,
-    C: CacheProvider<http::Request<ReqBody>, http::Response<ResBody>>,
+    C: CacheProvider<ReqBody, ResBody>,
     S: Service<http::Request<ReqBody>, Response = http::Response<ResBody>>,
 > {
     CacheGetBefore {
@@ -70,44 +70,38 @@ pub enum EtagCacheServiceFutureState<
     },
     InnerBefore {
         /// None indicates passthrough: only inner service is called
-        key: Option<C::K>,
+        key: Option<C::Key>,
         req: Option<http::Request<ReqBody>>,
     },
     Inner {
         /// None indicates passthrough: only inner service is called
-        key: Option<C::K>,
+        key: Option<C::Key>,
         #[pin]
         fut: S::Future,
     },
     CachePutBefore {
-        key: Option<C::K>,
+        key: Option<C::Key>,
         resp: Option<http::Response<ResBody>>,
     },
     CachePut {
         #[pin]
-        fut: <C as Service<(
-            <C as CachePutProvider<http::Response<ResBody>>>::Key,
-            http::Response<ResBody>,
-        )>>::Future,
+        fut: <C as Service<(C::Key, http::Response<ResBody>)>>::Future,
     },
 }
 
 impl<
         ReqBody,
         ResBody,
-        C: CacheProvider<http::Request<ReqBody>, http::Response<ResBody>>,
+        C: CacheProvider<ReqBody, ResBody>,
         S: Service<http::Request<ReqBody>, Response = http::Response<ResBody>>,
     > Future for EtagCacheServiceFuture<ReqBody, ResBody, C, S>
 {
     type Output = Result<
-        http::Response<EtagCacheRespBody<ResBody>>,
+        http::Response<EtagCacheResBody<ResBody, C::TResBody>>,
         EtagCacheServiceError<
             <C as Service<http::Request<ReqBody>>>::Error,
             S::Error,
-            <C as Service<(
-                <C as CachePutProvider<http::Response<ResBody>>>::Key,
-                http::Response<ResBody>,
-            )>>::Error,
+            <C as Service<(C::Key, http::Response<ResBody>)>>::Error,
         >,
     >;
 
@@ -143,7 +137,7 @@ impl<
                     let key = match result {
                         CacheGetResponseResult::Hit(headers) => {
                             return Poll::Ready(
-                                EtagCacheRespBody::hit_resp(headers)
+                                EtagCacheResBody::hit_resp(headers)
                                     .map_err(EtagCacheServiceError::ResponseError),
                             );
                         }
@@ -181,7 +175,7 @@ impl<
                     };
                     let k = match key.take() {
                         Some(k) => k,
-                        None => return Poll::Ready(Ok(EtagCacheRespBody::miss_resp(resp))),
+                        None => return Poll::Ready(Ok(EtagCacheResBody::passthrough_resp(resp))),
                     };
                     curr_state.set(EtagCacheServiceFutureState::CachePutBefore {
                         key: Some(k),
@@ -192,20 +186,16 @@ impl<
                 }
             },
             EtagCacheServiceFutureStateProj::CachePutBefore { key, resp } => {
-                match <C as Service<(
-                    <C as CachePutProvider<http::Response<ResBody>>>::Key,
-                    http::Response<ResBody>,
-                )>>::poll_ready(this.cache_provider, cx)
-                {
+                match <C as Service<(C::Key, http::Response<ResBody>)>>::poll_ready(
+                    this.cache_provider,
+                    cx,
+                ) {
                     Poll::Pending => Poll::Pending,
                     Poll::Ready(result) => {
                         if let Err(e) = result {
                             return Poll::Ready(Err(EtagCacheServiceError::CachePutError(e)));
                         }
-                        let fut = <C as Service<(
-                            <C as CachePutProvider<http::Response<ResBody>>>::Key,
-                            http::Response<ResBody>,
-                        )>>::call(
+                        let fut = <C as Service<(C::Key, http::Response<ResBody>)>>::call(
                             this.cache_provider,
                             (key.take().unwrap(), resp.take().unwrap()),
                         );
@@ -219,7 +209,7 @@ impl<
                 Poll::Pending => Poll::Pending,
                 Poll::Ready(result) => Poll::Ready(
                     result
-                        .map(EtagCacheRespBody::miss_resp)
+                        .map(EtagCacheResBody::miss_resp)
                         .map_err(EtagCacheServiceError::CachePutError),
                 ),
             },
