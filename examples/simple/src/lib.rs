@@ -1,10 +1,6 @@
 use axum::{
-    body::{Body, BoxBody},
-    error_handling::HandleErrorLayer,
-    http::StatusCode,
-    response::Html,
-    routing::get,
-    BoxError, Form, Router,
+    error_handling::HandleErrorLayer, http::StatusCode, response::Html, routing::get, BoxError,
+    Form, Router,
 };
 use lazy_static::lazy_static;
 use minijinja::{path_loader, Environment};
@@ -13,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use tower::ServiceBuilder;
 use tower_etag_cache::{const_lru_provider::ConstLruProvider, EtagCacheLayer};
 use tower_http::{
-    compression::Compression,
+    compression::{Compression, CompressionLayer},
     services::{ServeDir, ServeFile},
     trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer},
 };
@@ -43,17 +39,18 @@ pub async fn main() {
             .fallback(ServeFile::new("app/404.html")),
     );
 
-    let const_lru_provider_handle = ConstLruProvider::<Body, BoxBody, 255, u8>::init(1);
+    let const_lru_provider_handle = ConstLruProvider::<_, _, 255, u8>::init(5);
 
     let app = Router::new()
         .route("/", get(home))
         .route("/index/name", get(name))
+        .fallback_service(static_files)
+        .layer(CompressionLayer::new())
         .layer(
             ServiceBuilder::new()
                 .layer(HandleErrorLayer::new(handle_etag_cache_layer_err))
                 .layer(EtagCacheLayer::new(const_lru_provider_handle)),
         )
-        .fallback_service(static_files)
         .layer(
             TraceLayer::new_for_http()
                 .make_span_with(DefaultMakeSpan::new().level(Level::INFO))
@@ -66,9 +63,8 @@ pub async fn main() {
         .unwrap();
 }
 
-/// TODO
-pub async fn handle_etag_cache_layer_err<T: Into<BoxError>>(_err: T) -> (StatusCode, String) {
-    (StatusCode::INTERNAL_SERVER_ERROR, "".into())
+pub async fn handle_etag_cache_layer_err<T: Into<BoxError>>(err: T) -> (StatusCode, String) {
+    (StatusCode::INTERNAL_SERVER_ERROR, err.into().to_string())
 }
 
 pub async fn home() -> axum::response::Result<Html<String>> {
