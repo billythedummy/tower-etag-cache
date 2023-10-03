@@ -2,6 +2,13 @@
 name = "tower-etag-cache"
 version = "0.1.0"
 edition = "2021"
+license = "MIT OR Apache-2.0"
+homepage = "https://github.com/billythedummy/tower-etag-cache"
+repository = "https://github.com/billythedummy/tower-etag-cache.git"
+readme = "README.md"
+keywords = ["cache", "async", "non-blocking", "service", "middleware", "futures"]
+categories = ["asynchronous", "network-programming", "web-programming"]
+description = "A tower middleware for implementing ETag-based HTTP caching"
 
 [features]
 default = []

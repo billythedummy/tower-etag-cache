@@ -39,7 +39,7 @@ It keys entries by `SimpleEtagCacheKey`, a struct comprising the request URI + s
 
 Since the current implementation loads the entire response body into memory to calculate the ETag, `ConstLruProvider` is not suitable for extremely large responses such as large files.
 
-## How This Crate Works
+## How This Works
 
 The `EtagCache` tower service and `EtagCacheLayer` tower layer is created with an inner tower service + any type that implements the `CacheProvider` trait. 
 
