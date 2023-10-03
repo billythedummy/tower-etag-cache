@@ -58,10 +58,12 @@ pub enum ConstLruProviderRes<ReqBody> {
 ///
 /// Passthroughs responses that already have ETag or Vary headers set.
 ///
-/// Typical type args for use in axum:
+/// Typical type args for use in axum 0.6:
 ///
+/// ```ignore
 /// ReqBody = hyper::body::Body
 /// ResBody = axum::body::BoxBody
+/// ```
 pub struct ConstLruProvider<ReqBody, ResBody, const CAP: usize, I: PrimInt + Unsigned = usize> {
     const_lru: ConstLru<ConstLruProviderCacheKey, (String, SystemTime), CAP, I>,
     req_rx: mpsc::Receiver<ReqTup<ReqBody, ResBody>>,
@@ -77,8 +79,10 @@ where
     <ResBody as Body>::Data: Send,
     <ResBody as Body>::Error: Error + Send + Sync,
 {
-    /// Creates a ConstLruProvider and returns the handle to it.
-    /// ConstLruProvider is dropped once all handles are dropped.
+    /// Allocates and creates a ConstLruProvider and returns the [`CacheProvider`] handle to it.
+    ///
+    /// The ConstLruProvider is dropped once all handles are dropped.
+    ///
     /// Should be called once on server init
     pub fn init(req_buffer: usize) -> ConstLruProviderHandle<ReqBody, ResBody> {
         let (req_tx, req_rx) = mpsc::channel(req_buffer);

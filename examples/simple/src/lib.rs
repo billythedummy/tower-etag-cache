@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use tower::ServiceBuilder;
 use tower_etag_cache::{const_lru_provider::ConstLruProvider, EtagCacheLayer};
 use tower_http::{
-    compression::{Compression, CompressionLayer},
+    compression::CompressionLayer,
     services::{ServeDir, ServeFile},
     trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer},
 };
@@ -34,22 +34,20 @@ pub async fn main() {
         .compact()
         .init();
 
-    let static_files = Compression::new(
-        ServeDir::new("app") // if no files found, check your pwd to make sure it's at project root
-            .fallback(ServeFile::new("app/404.html")),
-    );
-
-    let const_lru_provider_handle = ConstLruProvider::<_, _, 255, u8>::init(5);
-
     let app = Router::new()
         .route("/", get(home))
         .route("/index/name", get(name))
-        .fallback_service(static_files)
+        .fallback_service(
+            ServeDir::new("app") // if no files found, check your pwd to make sure it's at project root
+                .fallback(ServeFile::new("app/404.html")),
+        )
         .layer(CompressionLayer::new())
         .layer(
             ServiceBuilder::new()
                 .layer(HandleErrorLayer::new(handle_etag_cache_layer_err))
-                .layer(EtagCacheLayer::new(const_lru_provider_handle)),
+                .layer(EtagCacheLayer::new(
+                    ConstLruProvider::<_, _, 255, u8>::init(5),
+                )),
         )
         .layer(
             TraceLayer::new_for_http()

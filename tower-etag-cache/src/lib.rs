@@ -1,3 +1,5 @@
+#![doc = include_str!("../README.md")]
+
 use http::Method;
 use std::task::Poll;
 use tower_layer::Layer;
