@@ -1,5 +1,8 @@
 use const_lru::ConstLru;
-use http::{HeaderMap, HeaderValue};
+use http::{
+    header::{ETAG, IF_NONE_MATCH, LAST_MODIFIED, VARY},
+    HeaderMap, HeaderValue,
+};
 use http_body::Body;
 use num_traits::{PrimInt, Unsigned};
 use std::{alloc::alloc, alloc::Layout, error::Error, ptr::addr_of_mut, time::SystemTime};
@@ -8,7 +11,8 @@ use tokio::sync::{mpsc, oneshot};
 use tokio_util::sync::PollSender;
 
 use crate::{
-    base64_blake3_body_etag::base64_blake3_body_etag, simple_cache_key::simple_etag_cache_key,
+    base64_blake3_body_etag::base64_blake3_body_etag,
+    simple_cache_key::{calc_simple_etag_cache_key, SimpleEtagCacheKey},
     CacheGetResponse, CacheGetResponseResult, CacheProvider,
 };
 
@@ -22,6 +26,8 @@ pub use get::*;
 pub use put::*;
 pub use tres_body::*;
 
+pub type ConstLruProviderCacheKey = SimpleEtagCacheKey;
+
 /// Tuple containing the request to the provider and the oneshot
 /// sender for the provider to send the response to
 pub type ReqTup<ReqBody, ResBody> = (
@@ -32,20 +38,32 @@ pub type ReqTup<ReqBody, ResBody> = (
 #[derive(Debug)]
 pub enum ConstLruProviderReq<ReqBody, ResBody> {
     Get(http::Request<ReqBody>),
-    Put(String, http::Response<ResBody>),
+    Put(ConstLruProviderCacheKey, http::Response<ResBody>),
 }
 
 #[derive(Debug)]
 pub enum ConstLruProviderRes<ReqBody> {
-    Get(CacheGetResponse<ReqBody, String>),
+    Get(CacheGetResponse<ReqBody, ConstLruProviderCacheKey>),
     Put(http::Response<ConstLruProviderTResBody>),
 }
 
+/// A basic in-memory ConstLru-backed cache provider.
+///
+/// Meant to be a singleton communicated with using channels via [`ConstLruProviderHandle`]
+///
+/// Uses [`SimpleEtagCacheKey`] as key type.
+///
+/// Stores the SystemTime of when the cache entry was created, which also serves as the response's
+/// last-modified header value
+///
+/// Passthroughs responses that already have ETag or Vary headers set.
+///
+/// Typical type args for use in axum:
 ///
 /// ReqBody = hyper::body::Body
 /// ResBody = axum::body::BoxBody
 pub struct ConstLruProvider<ReqBody, ResBody, const CAP: usize, I: PrimInt + Unsigned = usize> {
-    const_lru: ConstLru<String, (String, SystemTime), CAP, I>,
+    const_lru: ConstLru<ConstLruProviderCacheKey, (String, SystemTime), CAP, I>,
     req_rx: mpsc::Receiver<ReqTup<ReqBody, ResBody>>,
 }
 
@@ -84,6 +102,7 @@ where
         }
     }
 
+    /// long-running loop
     async fn run(&mut self) {
         while let Some((req, resp_tx)) = self.req_rx.recv().await {
             let res = match req {
@@ -104,8 +123,8 @@ where
     fn on_get_request(
         &mut self,
         req: http::Request<ReqBody>,
-    ) -> Result<CacheGetResponse<ReqBody, String>, ConstLruProviderError> {
-        let key = simple_etag_cache_key(&req).unwrap(); // TODO: handle error
+    ) -> Result<CacheGetResponse<ReqBody, ConstLruProviderCacheKey>, ConstLruProviderError> {
+        let key = calc_simple_etag_cache_key(&req);
         let (cache_etag, last_modified) = match self.const_lru.get(&key) {
             Some(e) => e,
             None => {
@@ -115,7 +134,7 @@ where
                 })
             }
         };
-        let if_none_match_iter = req.headers().get_all("if-none-match");
+        let if_none_match_iter = req.headers().get_all(IF_NONE_MATCH);
         for etag in if_none_match_iter {
             let etag_str = match etag.to_str() {
                 Ok(s) => s,
@@ -123,14 +142,7 @@ where
             };
             if etag_str == cache_etag {
                 let mut header_map = HeaderMap::new();
-                header_map.append("etag", etag.clone());
-                let last_modified_val = OffsetDateTime::from(*last_modified)
-                    .format(&Rfc2822)
-                    .unwrap();
-                header_map.append(
-                    "last-modified",
-                    HeaderValue::from_str(&last_modified_val).unwrap(),
-                );
+                Self::set_response_headers(&mut header_map, etag.clone(), *last_modified);
                 return Ok(CacheGetResponse {
                     req,
                     result: CacheGetResponseResult::Hit(header_map),
@@ -145,20 +157,48 @@ where
 
     async fn on_put_request(
         &mut self,
-        key: String,
+        key: ConstLruProviderCacheKey,
         resp: http::Response<ResBody>,
     ) -> Result<http::Response<ConstLruProviderTResBody>, ConstLruProviderError> {
         let (mut parts, body) = resp.into_parts();
-        // TODO: use aggregate() instead
+        // TODO: want to use hyper::body::aggregate() instead
+        // but idk how to do it without consuming the impl Buf
         let body_bytes = hyper::body::to_bytes(body)
             .await
             .map_err(|e| ConstLruProviderError::ReadResBody(e.into()))?;
-        let etag = base64_blake3_body_etag(body_bytes.iter());
+
+        if Self::should_passthrough(&parts) {
+            return Ok(http::Response::from_parts(parts, body_bytes.into()));
+        }
+
+        let etag = base64_blake3_body_etag(&body_bytes);
+        let last_modified = SystemTime::now();
         self.const_lru
-            .insert(key, (etag.to_str().unwrap().to_owned(), SystemTime::now()));
-        parts.headers.append("etag", etag);
+            .insert(key, (etag.to_str().unwrap().to_owned(), last_modified));
+        Self::set_response_headers(&mut parts.headers, etag, last_modified);
 
         Ok(http::Response::from_parts(parts, body_bytes.into()))
+    }
+
+    fn should_passthrough(parts: &http::response::Parts) -> bool {
+        let headers = &parts.headers;
+        headers.contains_key(VARY) || headers.contains_key(ETAG)
+    }
+
+    fn set_response_headers(
+        headers_mut: &mut HeaderMap,
+        etag_val: HeaderValue,
+        last_modified_val: SystemTime,
+    ) {
+        headers_mut.append(ETAG, etag_val);
+        let last_modified_val = OffsetDateTime::from(last_modified_val)
+            .format(&Rfc2822)
+            .unwrap();
+        headers_mut.append(
+            LAST_MODIFIED,
+            HeaderValue::from_str(&last_modified_val).unwrap(),
+        );
+        SimpleEtagCacheKey::set_response_headers(headers_mut);
     }
 }
 
@@ -179,6 +219,6 @@ impl<ReqBody, ResBody> Clone for ConstLruProviderHandle<ReqBody, ResBody> {
 impl<ReqBody: Send, ResBody: Send> CacheProvider<ReqBody, ResBody>
     for ConstLruProviderHandle<ReqBody, ResBody>
 {
-    type Key = String;
+    type Key = ConstLruProviderCacheKey;
     type TResBody = ConstLruProviderTResBody;
 }

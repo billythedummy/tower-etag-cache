@@ -11,8 +11,8 @@ use tower_service::Service;
 use crate::CacheGetResponse;
 
 use super::{
-    err::ConstLruProviderError, ConstLruProviderHandle, ConstLruProviderReq, ConstLruProviderRes,
-    ReqTup,
+    err::ConstLruProviderError, ConstLruProviderCacheKey, ConstLruProviderHandle,
+    ConstLruProviderReq, ConstLruProviderRes, ReqTup,
 };
 
 #[pin_project]
@@ -22,7 +22,8 @@ pub struct ConstLruProviderGetFuture<ReqBody> {
 }
 
 impl<ReqBody> Future for ConstLruProviderGetFuture<ReqBody> {
-    type Output = Result<CacheGetResponse<ReqBody, String>, ConstLruProviderError>;
+    type Output =
+        Result<CacheGetResponse<ReqBody, ConstLruProviderCacheKey>, ConstLruProviderError>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         self.project().resp_rx.poll(cx).map(|oneshot_result| {
@@ -43,7 +44,7 @@ impl<ReqBody, ResBody> Service<http::Request<ReqBody>> for ConstLruProviderHandl
 where
     ReqTup<ReqBody, ResBody>: Send,
 {
-    type Response = CacheGetResponse<ReqBody, String>;
+    type Response = CacheGetResponse<ReqBody, ConstLruProviderCacheKey>;
 
     type Error = ConstLruProviderError;
 

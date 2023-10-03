@@ -5,7 +5,7 @@
 {% block body %}
   <div class="flex flex-col items-center space-y-1 px-4 py-2">
     <h1 class="space-y-1 self-center text-center">My Web App</h1>
-    <form hx-get="/index/name" class="flex flex-col space-y-1">
+    <form hx-get="/index/name" hx-push-url="true" class="flex flex-col space-y-1">
       <label for="name">Enter your name:</label>
       <input id="name" name="name" class="border" />
       <button type="submit" class="border">Submit</button>

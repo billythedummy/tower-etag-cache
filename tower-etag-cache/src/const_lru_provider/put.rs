@@ -9,8 +9,8 @@ use tokio::sync::oneshot;
 use tower_service::Service;
 
 use super::{
-    err::ConstLruProviderError, ConstLruProviderHandle, ConstLruProviderReq, ConstLruProviderRes,
-    ConstLruProviderTResBody, ReqTup,
+    err::ConstLruProviderError, ConstLruProviderCacheKey, ConstLruProviderHandle,
+    ConstLruProviderReq, ConstLruProviderRes, ConstLruProviderTResBody, ReqTup,
 };
 
 #[pin_project]
@@ -37,7 +37,7 @@ impl<ReqBody> Future for ConstLruProviderPutFuture<ReqBody> {
     }
 }
 
-impl<ReqBody, ResBody> Service<(String, http::Response<ResBody>)>
+impl<ReqBody, ResBody> Service<(ConstLruProviderCacheKey, http::Response<ResBody>)>
     for ConstLruProviderHandle<ReqBody, ResBody>
 where
     ReqTup<ReqBody, ResBody>: Send,
@@ -54,7 +54,10 @@ where
             .map_err(|_| ConstLruProviderError::MpscSend)
     }
 
-    fn call(&mut self, (key, resp): (String, http::Response<ResBody>)) -> Self::Future {
+    fn call(
+        &mut self,
+        (key, resp): (ConstLruProviderCacheKey, http::Response<ResBody>),
+    ) -> Self::Future {
         let (resp_tx, resp_rx) = oneshot::channel();
         // safe to ignore err since resp_tx will be dropped
         // here and next poll will fail
