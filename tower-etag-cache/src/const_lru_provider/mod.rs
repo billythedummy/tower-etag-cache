@@ -1,6 +1,6 @@
 use const_lru::ConstLru;
 use http::{
-    header::{ETAG, IF_NONE_MATCH, LAST_MODIFIED, VARY},
+    header::{ETAG, IF_NONE_MATCH, LAST_MODIFIED},
     HeaderMap, HeaderValue,
 };
 use http_body::Body;
@@ -12,7 +12,7 @@ use tokio_util::sync::PollSender;
 
 use crate::{
     base64_blake3_body_etag::base64_blake3_body_etag,
-    simple_cache_key::{calc_simple_etag_cache_key, SimpleEtagCacheKey},
+    simple_etag_cache_key::{calc_simple_etag_cache_key, SimpleEtagCacheKey},
     CacheGetResponse, CacheGetResponseResult, CacheProvider,
 };
 
@@ -55,8 +55,6 @@ pub enum ConstLruProviderRes<ReqBody> {
 ///
 /// Stores the SystemTime of when the cache entry was created, which also serves as the response's
 /// last-modified header value
-///
-/// Passthroughs responses that already have ETag or Vary headers set.
 ///
 /// Typical type args for use in axum 0.6:
 ///
@@ -171,10 +169,6 @@ where
             .await
             .map_err(|e| ConstLruProviderError::ReadResBody(e.into()))?;
 
-        if Self::should_passthrough(&parts) {
-            return Ok(http::Response::from_parts(parts, body_bytes.into()));
-        }
-
         let etag = base64_blake3_body_etag(&body_bytes);
         let last_modified = SystemTime::now();
         self.const_lru
@@ -182,11 +176,6 @@ where
         Self::set_response_headers(&mut parts.headers, etag, last_modified);
 
         Ok(http::Response::from_parts(parts, body_bytes.into()))
-    }
-
-    fn should_passthrough(parts: &http::response::Parts) -> bool {
-        let headers = &parts.headers;
-        headers.contains_key(VARY) || headers.contains_key(ETAG)
     }
 
     fn set_response_headers(

@@ -10,7 +10,7 @@ use tower_service::Service;
 
 use crate::{
     cache_provider::CacheProvider, CacheGetResponse, CacheGetResponseResult, EtagCacheResBody,
-    EtagCacheServiceError,
+    EtagCacheServiceError, PassthroughPredicate,
 };
 
 #[pin_project]
@@ -18,9 +18,11 @@ pub struct EtagCacheServiceFuture<
     ReqBody,
     ResBody,
     C: CacheProvider<ReqBody, ResBody>,
+    P: PassthroughPredicate,
     S: Service<http::Request<ReqBody>, Response = http::Response<ResBody>>,
 > {
     cache_provider: C,
+    passthrough_predicate: P,
     inner: S,
     #[pin]
     state: EtagCacheServiceFutureState<ReqBody, ResBody, C, S>,
@@ -30,20 +32,33 @@ impl<
         ReqBody,
         ResBody,
         C: CacheProvider<ReqBody, ResBody>,
+        P: PassthroughPredicate,
         S: Service<http::Request<ReqBody>, Response = http::Response<ResBody>>,
-    > EtagCacheServiceFuture<ReqBody, ResBody, C, S>
+    > EtagCacheServiceFuture<ReqBody, ResBody, C, P, S>
 {
-    pub fn start(cache_provider: C, inner: S, req: http::Request<ReqBody>) -> Self {
+    pub fn start(
+        cache_provider: C,
+        passthrough_predicate: P,
+        inner: S,
+        req: http::Request<ReqBody>,
+    ) -> Self {
         Self {
             cache_provider,
+            passthrough_predicate,
             inner,
             state: EtagCacheServiceFutureState::CacheGetBefore { req: Some(req) },
         }
     }
 
-    pub fn passthrough(cache_provider: C, inner: S, req: http::Request<ReqBody>) -> Self {
+    pub fn passthrough(
+        cache_provider: C,
+        passthrough_predicate: P,
+        inner: S,
+        req: http::Request<ReqBody>,
+    ) -> Self {
         Self {
             cache_provider,
+            passthrough_predicate,
             inner,
             state: EtagCacheServiceFutureState::InnerBefore {
                 key: None,
@@ -69,12 +84,12 @@ pub enum EtagCacheServiceFutureState<
         fut: <C as Service<http::Request<ReqBody>>>::Future,
     },
     InnerBefore {
-        /// None indicates passthrough: only inner service is called
+        /// None indicates req passthrough: only inner service is called
         key: Option<C::Key>,
         req: Option<http::Request<ReqBody>>,
     },
     Inner {
-        /// None indicates passthrough: only inner service is called
+        /// None indicates req passthrough: only inner service is called
         key: Option<C::Key>,
         #[pin]
         fut: S::Future,
@@ -93,8 +108,9 @@ impl<
         ReqBody,
         ResBody,
         C: CacheProvider<ReqBody, ResBody>,
+        P: PassthroughPredicate,
         S: Service<http::Request<ReqBody>, Response = http::Response<ResBody>>,
-    > Future for EtagCacheServiceFuture<ReqBody, ResBody, C, S>
+    > Future for EtagCacheServiceFuture<ReqBody, ResBody, C, P, S>
 {
     type Output = Result<
         http::Response<EtagCacheResBody<ResBody, C::TResBody>>,
@@ -173,6 +189,11 @@ impl<
                         Ok(r) => r,
                         Err(e) => return Poll::Ready(Err(EtagCacheServiceError::InnerError(e))),
                     };
+
+                    if this.passthrough_predicate.should_passthrough_resp(&resp) {
+                        return Poll::Ready(Ok(EtagCacheResBody::passthrough_resp(resp)));
+                    }
+
                     let k = match key.take() {
                         Some(k) => k,
                         None => return Poll::Ready(Ok(EtagCacheResBody::passthrough_resp(resp))),

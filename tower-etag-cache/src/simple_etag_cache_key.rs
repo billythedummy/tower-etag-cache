@@ -11,7 +11,7 @@ use http::{
 /// Handles multiple header values for the same header name by storing them in a sorted Vec
 ///
 /// `Cache-control: private` is ignored
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct SimpleEtagCacheKey {
     pub uri_string: String,
     pub accept: Vec<HeaderValue>,
@@ -20,6 +20,7 @@ pub struct SimpleEtagCacheKey {
 }
 
 impl SimpleEtagCacheKey {
+    /// Sets the required `Vary` response headers for a response
     pub fn set_response_headers(headers_mut: &mut HeaderMap) {
         headers_mut.append(VARY, HeaderValue::from_static(ACCEPT.as_str()));
         headers_mut.append(VARY, HeaderValue::from_static(ACCEPT_ENCODING.as_str()));

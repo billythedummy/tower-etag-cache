@@ -45,9 +45,14 @@ pub async fn main() {
         .layer(
             ServiceBuilder::new()
                 .layer(HandleErrorLayer::new(handle_etag_cache_layer_err))
-                .layer(EtagCacheLayer::new(
-                    ConstLruProvider::<_, _, 255, u8>::init(5),
-                )),
+                .layer(EtagCacheLayer::with_default_predicate(ConstLruProvider::<
+                    _,
+                    _,
+                    255,
+                    u8,
+                >::init(
+                    5
+                ))),
         )
         .layer(
             TraceLayer::new_for_http()

@@ -12,9 +12,9 @@ description = "A tower middleware for implementing ETag-based HTTP caching"
 
 [features]
 default = []
-simple-cache-key = []
+simple-etag-cache-key = []
 base64-blake3-body-etag = ["dep:data-encoding", "dep:blake3"]
-const-lru-provider = ["dep:const-lru", "dep:hyper", "dep:num-traits", "dep:time", "dep:tokio", "dep:tokio-util", "simple-cache-key", "base64-blake3-body-etag"]
+const-lru-provider = ["dep:const-lru", "dep:hyper", "dep:num-traits", "dep:time", "dep:tokio", "dep:tokio-util", "simple-etag-cache-key", "base64-blake3-body-etag"]
 
 [dependencies]
 blake3 = { version = "^1.0", optional = true }
