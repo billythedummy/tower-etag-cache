@@ -4,7 +4,7 @@ A [tower](https://github.com/tower-rs) middleware for implementing [ETag-based H
 
 ## Quickstart
 
-The `const-lru-provider` feature provides a singleton [const-lru](https://docs.rs/const-lru/latest/const_lru)-backed [`CacheProvider`](CacheProvider) implementation that's ready to be used.
+The `const-lru-provider` feature provides a singleton [const-lru](https://docs.rs/const-lru/latest/const_lru)-backed [`CacheProvider`](crate::CacheProvider) implementation that's ready to be used.
 
 ```rust ignore
 use axum::{error_handling::HandleErrorLayer, http::StatusCode, BoxError, Router};
