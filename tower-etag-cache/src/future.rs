@@ -1,8 +1,7 @@
-#![allow(clippy::type_complexity)] // for EtagCacheServiceFutureState::CachePut.fut
-
 use pin_project::pin_project;
 use std::{
     future::Future,
+    mem::ManuallyDrop,
     pin::Pin,
     task::{Context, Poll},
 };
@@ -46,7 +45,9 @@ impl<
             cache_provider,
             passthrough_predicate,
             inner,
-            state: EtagCacheServiceFutureState::CacheGetBefore { req: Some(req) },
+            state: EtagCacheServiceFutureState::CacheGetBefore {
+                req: ManuallyDrop::new(req),
+            },
         }
     }
 
@@ -62,13 +63,13 @@ impl<
             inner,
             state: EtagCacheServiceFutureState::InnerBefore {
                 key: None,
-                req: Some(req),
+                req: ManuallyDrop::new(req),
             },
         }
     }
 }
 
-// using options just to take() and move fields to next state easily
+// Use ManuallyDrop to allow easy moving of fields behind Pin<&mut self> to the next state
 #[pin_project(project = EtagCacheServiceFutureStateProj)]
 pub enum EtagCacheServiceFutureState<
     ReqBody,
@@ -77,7 +78,7 @@ pub enum EtagCacheServiceFutureState<
     S: Service<http::Request<ReqBody>, Response = http::Response<ResBody>>,
 > {
     CacheGetBefore {
-        req: Option<http::Request<ReqBody>>,
+        req: ManuallyDrop<http::Request<ReqBody>>,
     },
     CacheGet {
         #[pin]
@@ -86,7 +87,7 @@ pub enum EtagCacheServiceFutureState<
     InnerBefore {
         /// None indicates req passthrough: only inner service is called
         key: Option<C::Key>,
-        req: Option<http::Request<ReqBody>>,
+        req: ManuallyDrop<http::Request<ReqBody>>,
     },
     Inner {
         /// None indicates req passthrough: only inner service is called
@@ -95,8 +96,8 @@ pub enum EtagCacheServiceFutureState<
         fut: S::Future,
     },
     CachePutBefore {
-        key: Option<C::Key>,
-        resp: Option<http::Response<ResBody>>,
+        key: ManuallyDrop<C::Key>,
+        resp: ManuallyDrop<http::Response<ResBody>>,
     },
     CachePut {
         #[pin]
@@ -135,7 +136,7 @@ impl<
                         }
                         let fut = <C as Service<http::Request<ReqBody>>>::call(
                             this.cache_provider,
-                            req.take().unwrap(),
+                            unsafe { ManuallyDrop::take(req) },
                         );
                         curr_state.set(EtagCacheServiceFutureState::CacheGet { fut });
                         cx.waker().wake_by_ref();
@@ -161,7 +162,7 @@ impl<
                     };
                     curr_state.set(EtagCacheServiceFutureState::InnerBefore {
                         key: Some(key),
-                        req: Some(req),
+                        req: ManuallyDrop::new(req),
                     });
                     cx.waker().wake_by_ref();
                     Poll::Pending
@@ -175,7 +176,7 @@ impl<
                             return Poll::Ready(Err(EtagCacheServiceError::InnerError(e)));
                         }
                         let k = key.take();
-                        let fut = this.inner.call(req.take().unwrap());
+                        let fut = this.inner.call(unsafe { ManuallyDrop::take(req) });
                         curr_state.set(EtagCacheServiceFutureState::Inner { fut, key: k });
                         cx.waker().wake_by_ref();
                         Poll::Pending
@@ -199,8 +200,8 @@ impl<
                         None => return Poll::Ready(Ok(EtagCacheResBody::passthrough_resp(resp))),
                     };
                     curr_state.set(EtagCacheServiceFutureState::CachePutBefore {
-                        key: Some(k),
-                        resp: Some(resp),
+                        key: ManuallyDrop::new(k),
+                        resp: ManuallyDrop::new(resp),
                     });
                     cx.waker().wake_by_ref();
                     Poll::Pending
@@ -218,7 +219,9 @@ impl<
                         }
                         let fut = <C as Service<(C::Key, http::Response<ResBody>)>>::call(
                             this.cache_provider,
-                            (key.take().unwrap(), resp.take().unwrap()),
+                            (unsafe { ManuallyDrop::take(key) }, unsafe {
+                                ManuallyDrop::take(resp)
+                            }),
                         );
                         curr_state.set(EtagCacheServiceFutureState::CachePut { fut });
                         cx.waker().wake_by_ref();

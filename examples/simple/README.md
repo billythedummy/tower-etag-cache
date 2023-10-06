@@ -1,5 +1,7 @@
 # htmx-axum-template
 
+Adapted from https://github.com/igneous-labs/htmx-axum-template, prod docker build doesnt work due to path dep outside build context.
+
 Template for web apps using:
 
 - [htmx](https://htmx.org)

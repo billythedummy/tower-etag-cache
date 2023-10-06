@@ -41,9 +41,9 @@ Since the current implementation loads the entire response body into memory to c
 
 ## How This Works
 
-The [`EtagCache`](EtagCache) tower service and [`EtagCacheLayer`](EtagCacheLayer) tower layer is created with an inner tower service + any type that implements the [`CacheProvider`](CacheProvider) trait. 
+The [`EtagCache`](crate::EtagCache) tower service and [`EtagCacheLayer`](crate::EtagCacheLayer) tower layer is created with an inner tower service + any type that implements the [`CacheProvider`](crate::CacheProvider) trait. 
 
-A [`CacheProvider`](CacheProvider):
+A [`CacheProvider`](crate::CacheProvider):
 - comprises 2 tower services
     - 1 that runs on incoming http requests to lookup ETags to check if a request's `If-None-Match` matches an ETag in the cache
     - 1 that runs on outgoing http responses to calculate and save the ETag of the response
@@ -62,18 +62,18 @@ pub trait CacheProvider<ReqBody, ResBody>:
 
 When a http request comes in,
 - If the service's passthrough_predicate indicates that the request should be passed through, the unmodified request is passed directly to the inner service.
-- Else the [`CacheProvider`](CacheProvider)'s first ETag lookup service runs on the request.
+- Else the [`CacheProvider`](crate::CacheProvider)'s first ETag lookup service runs on the request.
 - If the service returns a cache hit, an empty HTTP 304 response is returned to the client with the relevant headers.
 - Else the inner service runs on the unmodified request.
 - If the service's passthrough_predicate indicates that the response should be passed through, the unmodified response is returned to the client.
-- Else the [`CacheProvider`](CacheProvider)'s second ETag calculating and saving service runs on the http response returned by the inner service.
+- Else the [`CacheProvider`](crate::CacheProvider)'s second ETag calculating and saving service runs on the http response returned by the inner service.
 - The service transforms the response body and modifies the response headers to include the saved ETag and other relevant headers and returns it to the client.
 
 ### PassthroughPredicate
 
-The [`PassthroughPredicate`](PassthroughPredicate) trait controls when requests and responses should ignore the caching layer.
+The [`PassthroughPredicate`](crate::PassthroughPredicate) trait controls when requests and responses should ignore the caching layer.
 
-The provided [`DefaultPredicate`](DefaultPredicate) is available for use with [`EtagCacheLayer::with_default_predicate`](EtagCacheLayer::with_default_predicate) and has the following behaviour:
+The provided [`DefaultPredicate`](crate::DefaultPredicate) is available for use with [`EtagCacheLayer::with_default_predicate`](EtagCacheLayer::with_default_predicate) and has the following behaviour:
 
 requests:
 - only `GET` and `HEAD` methods are ran through the caching layer
