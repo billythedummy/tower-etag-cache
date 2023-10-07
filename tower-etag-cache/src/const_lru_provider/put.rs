@@ -64,7 +64,7 @@ where
     ) -> Self::Future {
         let (resp_tx, resp_rx) = oneshot::channel();
         // safe to ignore err since resp_tx will be dropped
-        // here and next poll will fail
+        // here and next poll of ConstLruProviderPutFuture will fail
         let _ = self
             .req_tx
             .send_item((ConstLruProviderReq::Put(key, resp), resp_tx));

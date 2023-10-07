@@ -7,7 +7,7 @@ license = "MIT OR Apache-2.0"
 homepage = "https://github.com/billythedummy/tower-etag-cache"
 repository = "https://github.com/billythedummy/tower-etag-cache.git"
 readme = "README.md"
-keywords = ["cache", "async", "non-blocking", "service", "middleware", "futures"]
+keywords = ["cache", "async", "service", "middleware", "futures"] # at most 5 keywords per crate
 categories = ["asynchronous", "network-programming", "web-programming"]
 description = "A tower middleware for implementing ETag-based HTTP caching"
 

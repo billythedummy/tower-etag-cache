@@ -65,7 +65,7 @@ where
     fn call(&mut self, req: http::Request<ReqBody>) -> Self::Future {
         let (resp_tx, resp_rx) = oneshot::channel();
         // safe to ignore err since resp_tx will be dropped
-        // here and next poll will fail
+        // here and next poll of ConstLruProviderGetFuture will fail
         let _ = self
             .req_tx
             .send_item((ConstLruProviderReq::Get(req), resp_tx));
