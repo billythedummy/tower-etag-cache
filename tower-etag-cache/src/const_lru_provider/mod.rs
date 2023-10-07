@@ -49,19 +49,12 @@ pub enum ConstLruProviderRes<ReqBody> {
 
 /// A basic in-memory ConstLru-backed cache provider.
 ///
-/// Meant to be a singleton communicated with using channels via [`ConstLruProviderHandle`]
+/// Meant to be a single instance communicated with using channels via [`ConstLruProviderHandle`]
 ///
 /// Uses [`SimpleEtagCacheKey`] as key type.
 ///
 /// Stores the SystemTime of when the cache entry was created, which also serves as the response's
 /// last-modified header value
-///
-/// Typical type args for use in axum 0.6:
-///
-/// ```ignore
-/// ReqBody = hyper::body::Body
-/// ResBody = axum::body::BoxBody
-/// ```
 pub struct ConstLruProvider<ReqBody, ResBody, const CAP: usize, I: PrimInt + Unsigned = usize> {
     const_lru: ConstLru<ConstLruProviderCacheKey, (String, SystemTime), CAP, I>,
     req_rx: mpsc::Receiver<ReqTup<ReqBody, ResBody>>,
@@ -77,7 +70,7 @@ where
     <ResBody as Body>::Data: Send,
     <ResBody as Body>::Error: Error + Send + Sync,
 {
-    /// Allocates and creates a ConstLruProvider and returns the [`CacheProvider`] handle to it.
+    /// Allocates and creates a ConstLruProvider on the heap and returns the [`CacheProvider`] handle to it.
     ///
     /// The ConstLruProvider is dropped once all handles are dropped.
     ///
@@ -170,9 +163,21 @@ where
             .map_err(|e| ConstLruProviderError::ReadResBody(e.into()))?;
 
         let etag = base64_blake3_body_etag(&body_bytes);
-        let last_modified = SystemTime::now();
-        self.const_lru
-            .insert(key, (etag.to_str().unwrap().to_owned(), last_modified));
+        // unwrap-safety: base64 should always be valid ascii
+        let etag_str = etag.to_str().unwrap();
+
+        let curr_val = self
+            .const_lru
+            .entry(key)
+            .or_insert_with(|| (etag_str.to_owned(), SystemTime::now()));
+
+        // don't modify if cached etag is already the same
+        if curr_val.0 != etag_str {
+            curr_val.0 = etag_str.to_owned();
+            curr_val.1 = SystemTime::now();
+        }
+
+        let last_modified = curr_val.1;
         Self::set_response_headers(&mut parts.headers, etag, last_modified);
 
         Ok(http::Response::from_parts(parts, body_bytes.into()))

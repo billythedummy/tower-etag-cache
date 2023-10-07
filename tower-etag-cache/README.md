@@ -4,7 +4,7 @@ A [tower](https://github.com/tower-rs) middleware for implementing [ETag-based H
 
 ## Quickstart
 
-The `const-lru-provider` feature provides a singleton [const-lru](https://docs.rs/const-lru/latest/const_lru)-backed [`CacheProvider`](crate::CacheProvider) implementation that's ready to be used.
+The `const-lru-provider` feature provides a [const-lru](https://docs.rs/const-lru/latest/const_lru)-backed [`CacheProvider`](crate::CacheProvider) implementation that's ready to be used.
 
 ```rust ignore
 use axum::{error_handling::HandleErrorLayer, http::StatusCode, BoxError, Router};
@@ -61,7 +61,7 @@ pub trait CacheProvider<ReqBody, ResBody>:
 ```
 
 When a http request comes in,
-- If the service's passthrough_predicate indicates that the request should be passed through, the unmodified request is passed directly to the inner service.
+- If the service's passthrough_predicate indicates that the request should be passed through, the unmodified request is passed directly to the inner service and the response is directly returned to the client.
 - Else the [`CacheProvider`](crate::CacheProvider)'s first ETag lookup service runs on the request.
 - If the service returns a cache hit, an empty HTTP 304 response is returned to the client with the relevant headers.
 - Else the inner service runs on the unmodified request.
