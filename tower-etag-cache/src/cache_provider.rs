@@ -1,13 +1,16 @@
 use http::HeaderMap;
 use tower_service::Service;
 
+/// Struct returned by a [`CacheProvider`]'s first cache-lookup `Service`
 #[derive(Debug)]
 pub struct CacheGetResponse<ReqBody, Key> {
-    /// Pass on the original request so that it can be processed by the inner service
+    /// The original request passed on so that it can be processed by the inner service
     pub req: http::Request<ReqBody>,
     pub result: CacheGetResponseResult<Key>,
 }
 
+/// Result of the cache-lookup `Service`
+///
 /// Either
 /// - calculated cache key if entry not in cache, so that the key can be used to put later on
 /// - HTTP response headers to send along with the HTTP 304 response if entry in cache

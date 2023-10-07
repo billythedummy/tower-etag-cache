@@ -1,3 +1,5 @@
+//! Cache key derived from uri and varying by `Accept`, `Accept-Encoding`, and `Accept-Language` request headers
+
 use http::{
     header::{ACCEPT, ACCEPT_ENCODING, ACCEPT_LANGUAGE, VARY},
     HeaderMap, HeaderName, HeaderValue,

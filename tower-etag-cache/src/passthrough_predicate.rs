@@ -3,16 +3,18 @@ use http::{
     Method,
 };
 
+/// Controls when requests and responses should ignore the caching layer
 pub trait PassthroughPredicate: Clone {
     /// Returns true if the given request should ignore the 2 EtagCache services
     /// and only be processed by the inner service
     fn should_passthrough_req<T>(&mut self, req: &http::Request<T>) -> bool;
 
-    /// Returns true if the given inner service response shouldn't have its ETag
-    /// calculated and cached by the second EtagCache service
+    /// Returns true if the given inner service response should ignore the
+    /// second EtagCache service and not have its ETag calculated and cached
     fn should_passthrough_resp<T>(&mut self, resp: &http::Response<T>) -> bool;
 }
 
+/// A [`PassthroughPredicate`] with sensible defaults for controlling ETag cache behaviour
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, PartialOrd, Ord, Hash)]
 pub struct DefaultPredicate;
 

@@ -1,18 +1,16 @@
 use http::HeaderMap;
 use pin_project::pin_project;
 
-mod err;
-pub use err::*;
-
 #[cfg(feature = "http-body-impl")]
-mod http_body_impl;
+pub mod http_body_impl;
 
+/// `http::Response` body type of [`EtagCache`](crate::EtagCache)
 #[pin_project(project = EtagCacheResBodyProj)]
 pub enum EtagCacheResBody<ResBody, TResBody> {
     Miss(#[pin] TResBody),
     Passthrough(#[pin] ResBody),
 
-    /// 304 responses should return empty http body
+    /// 304 response. Should return empty http body
     Hit,
 }
 

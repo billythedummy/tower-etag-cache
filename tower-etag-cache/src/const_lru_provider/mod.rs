@@ -1,3 +1,5 @@
+//! An in-memory [`CacheProvider`] backed by a single `ConstLru`
+
 use const_lru::ConstLru;
 use http::{
     header::{ETAG, IF_NONE_MATCH, LAST_MODIFIED},
@@ -49,11 +51,11 @@ pub enum ConstLruProviderRes<ReqBody> {
 
 /// A basic in-memory ConstLru-backed cache provider.
 ///
-/// Meant to be a single instance communicated with using channels via [`ConstLruProviderHandle`]
+/// Meant to be a single instance communicated with using a `tokio::sync::mpsc::channel` via [`ConstLruProviderHandle`]
 ///
 /// Uses [`SimpleEtagCacheKey`] as key type.
 ///
-/// Stores the SystemTime of when the cache entry was created, which also serves as the response's
+/// Also stores the `SystemTime` of when the cache entry was created, which serves as the response's
 /// last-modified header value
 pub struct ConstLruProvider<ReqBody, ResBody, const CAP: usize, I: PrimInt + Unsigned = usize> {
     const_lru: ConstLru<ConstLruProviderCacheKey, (String, SystemTime), CAP, I>,
@@ -75,6 +77,8 @@ where
     /// The ConstLruProvider is dropped once all handles are dropped.
     ///
     /// Should be called once on server init
+    ///
+    /// `req_buffer` is the size of the `mpsc::channel` connecting [`ConstLruProviderHandle`] to [`ConstLruProvider`]
     pub fn init(req_buffer: usize) -> ConstLruProviderHandle<ReqBody, ResBody> {
         let (req_tx, req_rx) = mpsc::channel(req_buffer);
 

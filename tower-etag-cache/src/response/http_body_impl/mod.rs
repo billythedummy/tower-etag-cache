@@ -8,7 +8,10 @@ use std::{pin::Pin, task::Poll};
 use bytes::Bytes;
 use http_body::Body;
 
-use crate::{EtagCacheResBody, EtagCacheResBodyError, EtagCacheResBodyProj};
+use crate::{EtagCacheResBody, EtagCacheResBodyProj};
+
+mod err;
+pub use err::*;
 
 impl<ResBody: Body<Data = Bytes>, TResBody: Body<Data = Bytes>> Body
     for EtagCacheResBody<ResBody, TResBody>

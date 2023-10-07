@@ -3,6 +3,7 @@ use std::{
     fmt::{Debug, Display},
 };
 
+/// Error type of the [`EtagCache`](crate::EtagCache) `Service`
 #[derive(Debug)]
 pub enum EtagCacheServiceError<CacheGetError, InnerError, CachePutError> {
     CacheGetError(CacheGetError),

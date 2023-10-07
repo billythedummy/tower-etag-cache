@@ -1,3 +1,5 @@
+//! Function that calculates a `HeaderValue` as the base64-encoded blake3 hash of a byte slice
+
 use data_encoding::BASE64;
 use http::HeaderValue;
 

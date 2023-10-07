@@ -12,6 +12,7 @@ use crate::{
     EtagCacheServiceError, PassthroughPredicate,
 };
 
+/// `Future` struct returned by [`EtagCache::call`](crate::EtagCache::call)
 #[pin_project]
 pub struct EtagCacheServiceFuture<
     ReqBody,
@@ -70,8 +71,9 @@ impl<
 }
 
 // Use ManuallyDrop to allow easy moving of fields behind Pin<&mut self> to the next state
+/// `Enum` used to build the [`EtagCache`](crate::EtagCache) `Service`'s state machine
 #[pin_project(project = EtagCacheServiceFutureStateProj)]
-pub enum EtagCacheServiceFutureState<
+enum EtagCacheServiceFutureState<
     ReqBody,
     ResBody,
     C: CacheProvider<ReqBody, ResBody>,

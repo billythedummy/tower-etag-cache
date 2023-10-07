@@ -3,6 +3,7 @@ use std::{
     fmt::{Debug, Display},
 };
 
+/// Error type for [`EtagCacheResBody`](super::EtagCacheResBody)'s `Body` impl
 #[derive(Debug, Clone, Copy)]
 pub enum EtagCacheResBodyError<ResBodyError, TResBodyError> {
     Miss(TResBodyError),

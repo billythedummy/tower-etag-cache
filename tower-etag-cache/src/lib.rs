@@ -25,6 +25,7 @@ pub use future::*;
 pub use passthrough_predicate::*;
 pub use response::*;
 
+/// The eponymous tower `Service`
 #[derive(Clone, Copy, Debug)]
 pub struct EtagCache<C, P, S> {
     cache_provider: C,
@@ -52,6 +53,7 @@ impl<C, S> EtagCache<C, DefaultPredicate, S> {
     }
 }
 
+/// The eponymous tower `Layer`
 #[derive(Clone, Copy, Debug)]
 pub struct EtagCacheLayer<C, P> {
     cache_provider: C,
