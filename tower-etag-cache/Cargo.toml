@@ -13,6 +13,10 @@ description = "A tower middleware for implementing ETag-based HTTP caching"
 
 include = ["/src", "/README.md"]
 
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
 [features]
 default = ["http-body-impl"]
 http-body-impl = ["dep:bytes", "dep:http-body"]

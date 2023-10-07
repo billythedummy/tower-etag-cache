@@ -2,6 +2,7 @@ use http::HeaderMap;
 use pin_project::pin_project;
 
 #[cfg(feature = "http-body-impl")]
+#[cfg_attr(docsrs, doc(cfg(feature = "http-body-impl")))]
 pub mod http_body_impl;
 
 /// `http::Response` body type of [`EtagCache`](crate::EtagCache)

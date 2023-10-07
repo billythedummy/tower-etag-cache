@@ -1,4 +1,5 @@
 #![doc = include_str!("../README.md")]
+#![cfg_attr(docsrs, feature(doc_cfg))]
 
 use std::task::Poll;
 use tower_layer::Layer;
@@ -11,12 +12,15 @@ mod passthrough_predicate;
 mod response;
 
 #[cfg(feature = "simple-etag-cache-key")]
+#[cfg_attr(docsrs, doc(cfg(feature = "simple-etag-cache-key")))]
 pub mod simple_etag_cache_key;
 
 #[cfg(feature = "base64-blake3-body-etag")]
+#[cfg_attr(docsrs, doc(cfg(feature = "base64-blake3-body-etag")))]
 pub mod base64_blake3_body_etag;
 
 #[cfg(feature = "const-lru-provider")]
+#[cfg_attr(docsrs, doc(cfg(feature = "const-lru-provider")))]
 pub mod const_lru_provider;
 
 pub use cache_provider::*;
