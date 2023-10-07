@@ -1,25 +1,28 @@
 // Error type must implement std::Error else axum will throw
 // `the trait bound HandleError<...> is not satisfied`
 
-use std::{error::Error, fmt::Display};
+use std::{
+    error::Error,
+    fmt::{Debug, Display},
+};
 
 use tokio::sync::oneshot::error::RecvError;
 
 #[derive(Debug)]
-pub enum ConstLruProviderError {
+pub enum ConstLruProviderError<ResBodyError> {
     OneshotRecv(RecvError),
     MpscSend,
-    ReadResBody(Box<dyn Error + Send + Sync>),
+    ReadResBody(ResBodyError),
 }
 
-impl Display for ConstLruProviderError {
+impl<ResBodyError: Display> Display for ConstLruProviderError<ResBodyError> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::OneshotRecv(e) => e.fmt(f),
+            Self::OneshotRecv(e) => Display::fmt(&e, f),
             Self::MpscSend => write!(f, "MpscSend"),
-            Self::ReadResBody(e) => e.fmt(f),
+            Self::ReadResBody(e) => Display::fmt(&e, f),
         }
     }
 }
 
-impl Error for ConstLruProviderError {}
+impl<ResBodyError: Debug + Display> Error for ConstLruProviderError<ResBodyError> {}

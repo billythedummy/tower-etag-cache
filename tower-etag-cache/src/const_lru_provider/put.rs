@@ -4,6 +4,7 @@ use std::{
     task::{Context, Poll},
 };
 
+use http_body::Body;
 use pin_project::pin_project;
 use tokio::sync::oneshot;
 use tower_service::Service;
@@ -14,13 +15,16 @@ use super::{
 };
 
 #[pin_project]
-pub struct ConstLruProviderPutFuture<ReqBody> {
+pub struct ConstLruProviderPutFuture<ReqBody, ResBody: Body> {
     #[pin]
-    resp_rx: oneshot::Receiver<Result<ConstLruProviderRes<ReqBody>, ConstLruProviderError>>,
+    resp_rx: oneshot::Receiver<
+        Result<ConstLruProviderRes<ReqBody>, ConstLruProviderError<ResBody::Error>>,
+    >,
 }
 
-impl<ReqBody> Future for ConstLruProviderPutFuture<ReqBody> {
-    type Output = Result<http::Response<ConstLruProviderTResBody>, ConstLruProviderError>;
+impl<ReqBody, ResBody: Body> Future for ConstLruProviderPutFuture<ReqBody, ResBody> {
+    type Output =
+        Result<http::Response<ConstLruProviderTResBody>, ConstLruProviderError<ResBody::Error>>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         self.project().resp_rx.poll(cx).map(|oneshot_result| {
@@ -37,16 +41,16 @@ impl<ReqBody> Future for ConstLruProviderPutFuture<ReqBody> {
     }
 }
 
-impl<ReqBody, ResBody> Service<(ConstLruProviderCacheKey, http::Response<ResBody>)>
+impl<ReqBody, ResBody: Body> Service<(ConstLruProviderCacheKey, http::Response<ResBody>)>
     for ConstLruProviderHandle<ReqBody, ResBody>
 where
     ReqTup<ReqBody, ResBody>: Send,
 {
     type Response = http::Response<ConstLruProviderTResBody>;
 
-    type Error = ConstLruProviderError;
+    type Error = ConstLruProviderError<ResBody::Error>;
 
-    type Future = ConstLruProviderPutFuture<ReqBody>;
+    type Future = ConstLruProviderPutFuture<ReqBody, ResBody>;
 
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         self.req_tx

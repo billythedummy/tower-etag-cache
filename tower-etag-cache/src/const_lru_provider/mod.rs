@@ -34,7 +34,9 @@ pub type ConstLruProviderCacheKey = SimpleEtagCacheKey;
 /// sender for the provider to send the response to
 pub type ReqTup<ReqBody, ResBody> = (
     ConstLruProviderReq<ReqBody, ResBody>,
-    oneshot::Sender<Result<ConstLruProviderRes<ReqBody>, ConstLruProviderError>>,
+    oneshot::Sender<
+        Result<ConstLruProviderRes<ReqBody>, ConstLruProviderError<<ResBody as Body>::Error>>,
+    >,
 );
 
 #[derive(Debug)]
@@ -57,7 +59,8 @@ pub enum ConstLruProviderRes<ReqBody> {
 ///
 /// Also stores the `SystemTime` of when the cache entry was created, which serves as the response's
 /// last-modified header value
-pub struct ConstLruProvider<ReqBody, ResBody, const CAP: usize, I: PrimInt + Unsigned = usize> {
+pub struct ConstLruProvider<ReqBody, ResBody: Body, const CAP: usize, I: PrimInt + Unsigned = usize>
+{
     const_lru: ConstLru<ConstLruProviderCacheKey, (String, SystemTime), CAP, I>,
     req_rx: mpsc::Receiver<ReqTup<ReqBody, ResBody>>,
 }
@@ -122,7 +125,10 @@ where
     fn on_get_request(
         &mut self,
         req: http::Request<ReqBody>,
-    ) -> Result<CacheGetResponse<ReqBody, ConstLruProviderCacheKey>, ConstLruProviderError> {
+    ) -> Result<
+        CacheGetResponse<ReqBody, ConstLruProviderCacheKey>,
+        ConstLruProviderError<ResBody::Error>,
+    > {
         let key = calc_simple_etag_cache_key(&req);
         let (cache_etag, last_modified) = match self.const_lru.get(&key) {
             Some(e) => e,
@@ -158,13 +164,14 @@ where
         &mut self,
         key: ConstLruProviderCacheKey,
         resp: http::Response<ResBody>,
-    ) -> Result<http::Response<ConstLruProviderTResBody>, ConstLruProviderError> {
+    ) -> Result<http::Response<ConstLruProviderTResBody>, ConstLruProviderError<ResBody::Error>>
+    {
         let (mut parts, body) = resp.into_parts();
         // TODO: want to use hyper::body::aggregate() instead
         // but idk how to do it without consuming the impl Buf
         let body_bytes = hyper::body::to_bytes(body)
             .await
-            .map_err(|e| ConstLruProviderError::ReadResBody(e.into()))?;
+            .map_err(ConstLruProviderError::ReadResBody)?;
 
         let etag = base64_blake3_body_etag(&body_bytes);
         // unwrap-safety: base64 should always be valid ascii
@@ -206,11 +213,11 @@ where
 
 // SERVICE HANDLE
 
-pub struct ConstLruProviderHandle<ReqBody, ResBody> {
+pub struct ConstLruProviderHandle<ReqBody, ResBody: Body> {
     req_tx: PollSender<ReqTup<ReqBody, ResBody>>,
 }
 
-impl<ReqBody, ResBody> Clone for ConstLruProviderHandle<ReqBody, ResBody> {
+impl<ReqBody, ResBody: Body> Clone for ConstLruProviderHandle<ReqBody, ResBody> {
     fn clone(&self) -> Self {
         Self {
             req_tx: self.req_tx.clone(),
@@ -218,8 +225,10 @@ impl<ReqBody, ResBody> Clone for ConstLruProviderHandle<ReqBody, ResBody> {
     }
 }
 
-impl<ReqBody: Send, ResBody: Send> CacheProvider<ReqBody, ResBody>
+impl<ReqBody: Send, ResBody: Body + Send> CacheProvider<ReqBody, ResBody>
     for ConstLruProviderHandle<ReqBody, ResBody>
+where
+    ResBody::Error: Send,
 {
     type Key = ConstLruProviderCacheKey;
     type TResBody = ConstLruProviderTResBody;
