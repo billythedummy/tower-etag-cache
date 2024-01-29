@@ -5,8 +5,7 @@ use std::{
 };
 
 use bytes::Bytes;
-use http::HeaderMap;
-use http_body::Body;
+use http_body::{Body, Frame};
 use pin_project::pin_project;
 
 /// Newtype for Bytes to impl Body for
@@ -25,22 +24,15 @@ impl Body for ConstLruProviderTResBody {
 
     type Error = Infallible;
 
-    fn poll_data(
+    fn poll_frame(
         self: Pin<&mut Self>,
         _cx: &mut Context<'_>,
-    ) -> Poll<Option<Result<Self::Data, Self::Error>>> {
+    ) -> Poll<Option<Result<Frame<Self::Data>, Self::Error>>> {
         let b = std::mem::take(self.project().0);
         if b.is_empty() {
             Poll::Ready(None)
         } else {
-            Poll::Ready(Some(Ok(b)))
+            Poll::Ready(Some(Ok(Frame::data(b))))
         }
-    }
-
-    fn poll_trailers(
-        self: Pin<&mut Self>,
-        _cx: &mut Context<'_>,
-    ) -> Poll<Result<Option<HeaderMap>, Self::Error>> {
-        Poll::Ready(Ok(None))
     }
 }
