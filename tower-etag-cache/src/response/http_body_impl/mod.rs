@@ -3,10 +3,13 @@
 //!
 //! This allows the middleware to be easily used with axum 0.6.
 
-use std::{pin::Pin, task::Poll};
+use std::{
+    pin::Pin,
+    task::{Context, Poll},
+};
 
 use bytes::Bytes;
-use http_body::Body;
+use http_body::{Body, Frame};
 
 use crate::{EtagCacheResBody, EtagCacheResBodyProj};
 
@@ -22,33 +25,18 @@ impl<ResBody: Body<Data = Bytes>, TResBody: Body<Data = Bytes>> Body
 
     type Error = EtagCacheResBodyError<ResBody::Error, TResBody::Error>;
 
-    fn poll_data(
+    fn poll_frame(
         self: Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-    ) -> Poll<Option<Result<Self::Data, Self::Error>>> {
+        cx: &mut Context<'_>,
+    ) -> Poll<Option<Result<Frame<Self::Data>, Self::Error>>> {
         match self.project() {
             EtagCacheResBodyProj::Miss(b) => b
-                .poll_data(cx)
+                .poll_frame(cx)
                 .map(|p| p.map(|res| res.map_err(EtagCacheResBodyError::Miss))),
             EtagCacheResBodyProj::Passthrough(b) => b
-                .poll_data(cx)
+                .poll_frame(cx)
                 .map(|p| p.map(|res| res.map_err(EtagCacheResBodyError::Passthrough))),
             EtagCacheResBodyProj::Hit => Poll::Ready(None),
-        }
-    }
-
-    fn poll_trailers(
-        self: Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-    ) -> Poll<Result<Option<http::HeaderMap>, Self::Error>> {
-        match self.project() {
-            EtagCacheResBodyProj::Miss(b) => b
-                .poll_trailers(cx)
-                .map(|res| res.map_err(EtagCacheResBodyError::Miss)),
-            EtagCacheResBodyProj::Passthrough(b) => b
-                .poll_trailers(cx)
-                .map(|res| res.map_err(EtagCacheResBodyError::Passthrough)),
-            EtagCacheResBodyProj::Hit => Poll::Ready(Ok(None)),
         }
     }
 }

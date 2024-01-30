@@ -6,6 +6,7 @@ use http::{
     HeaderMap, HeaderValue,
 };
 use http_body::Body;
+use http_body_util::BodyExt;
 use num_traits::{PrimInt, Unsigned};
 use std::{alloc::alloc, alloc::Layout, error::Error, ptr::addr_of_mut, time::SystemTime};
 use time::{format_description::well_known::Rfc2822, OffsetDateTime};
@@ -169,9 +170,10 @@ where
         let (mut parts, body) = resp.into_parts();
         // TODO: want to use hyper::body::aggregate() instead
         // but idk how to do it without consuming the impl Buf
-        let body_bytes = hyper::body::to_bytes(body)
+        let body_bytes = BodyExt::collect(body)
             .await
-            .map_err(ConstLruProviderError::ReadResBody)?;
+            .map_err(ConstLruProviderError::ReadResBody)?
+            .to_bytes();
 
         let etag = base64_blake3_body_etag(&body_bytes);
         // unwrap-safety: base64 should always be valid ascii

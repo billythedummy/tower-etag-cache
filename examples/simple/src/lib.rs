@@ -6,6 +6,7 @@ use lazy_static::lazy_static;
 use minijinja::{path_loader, Environment};
 use minijinja_autoreload::AutoReloader;
 use serde::{Deserialize, Serialize};
+use tokio::net::TcpListener;
 use tower::ServiceBuilder;
 use tower_etag_cache::{const_lru_provider::ConstLruProvider, EtagCacheLayer};
 use tower_http::{
@@ -60,8 +61,8 @@ pub async fn main() {
                 .on_response(DefaultOnResponse::new().level(Level::INFO)),
         );
 
-    axum::Server::bind(&"0.0.0.0:3000".parse().unwrap())
-        .serve(app.into_make_service())
+    let listener = TcpListener::bind("0.0.0.0:3000").await.unwrap();
+    axum::serve(listener, app.into_make_service())
         .await
         .unwrap();
 }
