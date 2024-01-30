@@ -1,3 +1,10 @@
 {
-    "rust-analyzer.cargo.features": "all"
+  "editor.formatOnSave": true,
+  "[json]": {
+    "editor.tabSize": 2
+  },
+  "[rust]": {
+    "editor.defaultFormatter": "rust-lang.rust-analyzer"
+  },
+  "rust-analyzer.cargo.features": "all",
 }
