@@ -20,16 +20,19 @@ pub enum CacheGetResponseResult<Key> {
     Hit(HeaderMap),
 }
 
-/// Typical type args for use in axum 0.6:
+/// Typical type args for use in axum 0.7:
 ///
 /// ```ignore
-/// ReqBody = hyper::body::Body
-/// ResBody = axum::body::BoxBody
+/// ReqBody = axum::body::Body
+/// ResBody = axum::body::Body
 /// ```
 pub trait CacheProvider<ReqBody, ResBody>:
     Service<http::Request<ReqBody>, Response = CacheGetResponse<ReqBody, Self::Key>> // Get
     + Service<(Self::Key, http::Response<ResBody>), Response = http::Response<Self::TResBody>> // Put
 {
+    /// The cache key type
     type Key;
+
+    /// The type that the response body is transformed into by the `CacheProvider`. T(ransformed)ResBody
     type TResBody;
 }

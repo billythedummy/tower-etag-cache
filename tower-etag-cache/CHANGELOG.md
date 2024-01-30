@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [UNRELEASED]
 
+### Breaking
+
+- Upgrade dependencies to `axum 0.7.0` and all required
+
 ### Added
 
 - document all features and use nightly `doc_cfg` to annotate feature on optional modules.

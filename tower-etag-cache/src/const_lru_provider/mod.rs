@@ -95,6 +95,7 @@ where
     }
 
     fn boxed(req_rx: mpsc::Receiver<ReqTup<ReqBody, ResBody>>) -> Box<Self> {
+        // directly alloc so that a large ConstLru does not trigger stack overflow
         unsafe {
             let ptr = alloc(Layout::new::<Self>()) as *mut Self;
             let const_lru_ptr = addr_of_mut!((*ptr).const_lru);
@@ -117,7 +118,7 @@ where
                     .await
                     .map(ConstLruProviderRes::Put),
             };
-            // ignore if resp_rx dropped
+            // ignore error if resp_rx dropped
             let _ = resp_tx.send(res);
         }
         // exits when all req_tx dropped
@@ -168,8 +169,6 @@ where
     ) -> Result<http::Response<ConstLruProviderTResBody>, ConstLruProviderError<ResBody::Error>>
     {
         let (mut parts, body) = resp.into_parts();
-        // TODO: want to use hyper::body::aggregate() instead
-        // but idk how to do it without consuming the impl Buf
         let body_bytes = BodyExt::collect(body)
             .await
             .map_err(ConstLruProviderError::ReadResBody)?

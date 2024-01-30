@@ -35,6 +35,8 @@ pub async fn main() {
         .compact()
         .init();
 
+    let etag_cache_layer =
+        EtagCacheLayer::with_default_predicate(ConstLruProvider::<_, _, 255, u8>::init(5));
     let app = Router::new()
         .route("/", get(home))
         .route("/index/name", get(name))
@@ -46,14 +48,7 @@ pub async fn main() {
         .layer(
             ServiceBuilder::new()
                 .layer(HandleErrorLayer::new(handle_etag_cache_layer_err))
-                .layer(EtagCacheLayer::with_default_predicate(ConstLruProvider::<
-                    _,
-                    _,
-                    255,
-                    u8,
-                >::init(
-                    5
-                ))),
+                .layer(etag_cache_layer),
         )
         .layer(
             TraceLayer::new_for_http()
